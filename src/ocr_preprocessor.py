@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
+from .paper_parser import PaperParser  # Use relative import with dot notation
 from mistralai import Mistral
 
 # Logger setup
@@ -24,6 +25,7 @@ class OCRProcessor:
         self.cache_dir = Path("cache")
         self.cache_dir.mkdir(exist_ok=True)
         self.cache_enabled = True
+        self.parser = PaperParser()
 
     def upload_file(self, file_path: str):
         """
@@ -93,9 +95,12 @@ class OCRProcessor:
             return None
 
         ocr_response = self.process_ocr(signed_url)
-        if ocr_response:
-            self._save_to_cache(file_path, ocr_response)
-        return ocr_response
+        response_dict = json.loads(ocr_response.model_dump_json())
+        paper_structure = self.parser.parse_paper(response_dict)
+
+        if paper_structure:
+            self._save_to_cache(file_path, paper_structure)
+        return paper_structure
 
     def _get_cache_path(self, file_path: str) -> Path:
         """
@@ -137,9 +142,8 @@ class OCRProcessor:
 
         cache_path = self._get_cache_path(file_path)
         try:
-            response_dict = json.loads(ocr_result.model_dump_json())
             with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(response_dict, f, ensure_ascii=False, indent=2)
+                json.dump(ocr_result, f, ensure_ascii=False, indent=2)
             logger.info(f"OCR results cached: {cache_path}")
         except Exception as e:
             logger.error(f"Error saving to cache: {e}")
@@ -157,6 +161,7 @@ class OCRProcessor:
             except Exception as e:
                 logger.error(f"Error cleaning cache: {e}")
 
+    # TODO: Make it work with URL  
     # TODO: Add cron job or background task for automatic cache cleanup.
     # TODO: Convert cache_data to OCRResponse if needed.
     # TODO: Implement retry logic for failed OCR requests.
